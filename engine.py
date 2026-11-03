@@ -50,7 +50,7 @@ def enhance_prompt_with_gemini(festival):
     if not GEMINI_API_KEY:
         return f"{base_prompt}, no text, no watermark, ultra-detailed 8k commercial photography, clean dark lower third for branding"
 
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={GEMINI_API_KEY}"
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
     system_instruction = (
         "You are an award-winning luxury brand art director for 'Sadhguru Tiles' (premium marble, granite & ceramic tiles). "
         "Expand the given festival visual concept into a single, vivid 80-word image generation prompt for FLUX.1-schnell. "
@@ -77,7 +77,7 @@ def generate_flux_image(prompt):
     """Calls Cloudflare Workers AI FLUX-1-schnell and returns a 1080x1080 PIL Image."""
     url = f"https://api.cloudflare.com/client/v4/accounts/{CF_ACCOUNT_ID}/ai/run/@cf/black-forest-labs/flux-1-schnell"
     headers = {"Authorization": f"Bearer {CF_API_TOKEN}"}
-    payload = {"prompt": prompt, "num_steps": 6}
+    payload = {"prompt": prompt, "steps": 6}
 
     res = requests.post(url, headers=headers, json=payload, timeout=60)
     res.raise_for_status()
