@@ -1,0 +1,86 @@
+name: Daily Festival Poster Engine
+
+on:
+  schedule:
+    # Backup trigger at 20:15 IST. Cron-Job.org fires at 19:30 IST; data/sent_log.json stops duplicate sends.
+    - cron: '45 14 * * *'
+  workflow_dispatch:
+    inputs:
+      test_date:
+        description: 'Optional: test a specific festival date (YYYY-MM-DD)'
+        required: false
+        default: ''
+      dry_run:
+        description: 'Generate the poster but do not send it (true/false)'
+        required: false
+        default: 'false'
+
+permissions:
+  contents: write   # needed to commit data/sent_log.json
+
+concurrency:
+  group: festival-poster
+  cancel-in-progress: false
+
+jobs:
+  send-festival-poster:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: System libs (Devanagari shaping + fallback font)
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y --no-install-recommends libraqm0 libfribidi0 libharfbuzz0b fonts-lohit-deva
+
+      - name: Python deps
+        run: pip install "pillow>=10.1" numpy requests
+
+      - name: Cache Google Fonts
+        uses: actions/cache@v4
+        with:
+          path: assets/fonts
+          key: fonts-v1
+
+      - name: Run poster engine
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+          CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+          WA_PHONE_NUMBER_ID: ${{ secrets.WA_PHONE_NUMBER_ID }}
+          WA_ACCESS_TOKEN: ${{ secrets.WA_ACCESS_TOKEN }}
+          CLIENT_WA_NUMBER: ${{ secrets.CLIENT_WA_NUMBER }}
+          # Optional free backup channel (no 24h window): create a bot with @BotFather, press Start once.
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          TEST_DATE: ${{ github.event.inputs.test_date }}
+          DRY_RUN: ${{ github.event.inputs.dry_run }}
+          POSTER_LANG: hindi        # or marathi
+        run: python engine.py
+
+      - name: Upload posters + raw candidates (14 days)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: posters
+          path: out/
+          retention-days: 14
+          if-no-files-found: ignore
+
+      - name: Commit sent log (dedupe)
+        if: success() && github.event.inputs.test_date == ''
+        run: |
+          if [ -n "$(git status --porcelain data/sent_log.json 2>/dev/null)" ]; then
+            git config user.name "poster-bot"
+            git config user.email "poster-bot@users.noreply.github.com"
+            git add data/sent_log.json
+            git commit -m "chore: update sent log [skip ci]"
+            git push
+          fi
